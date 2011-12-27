@@ -1,0 +1,110 @@
+#!/usr/bin/php
+<?php
+$help =	"usage: deploy [branch|tag] project\nif branch|tag is not specified " .
+ 		"it will use master as a fallback\n";
+
+$production_dirs = array(
+	'assemblyexpress' => 'assemblyexpress',
+	'pentalogix' => 'pentalogix-www2',
+	'order-manager' => 'quotetools',
+	'order-manager-pl' => 'order-manager-pl',
+	'stencils' => 'stencils-www',
+	'pcbunlimited' => 'pcbunlimited'
+);
+/**
+ * @return string	Current branch name if it is local branch or empty
+ *					string if it is a (no branch) state
+ */
+function get_current_branch($git_repo) {
+	$output = `cd $git_repo; git symbolic-ref HEAD`;
+	if(strpos($output, '/') > -1) {
+		$parts = explode('/', trim($output));
+		return $parts[2];
+	} else {
+		return "";
+	}
+}
+
+function branch_exists($git_repo, $branch_name) {
+	$cmd = "cd $git_repo; git branch;";
+	$output = `$cmd`;
+	$branches = explode("\n", trim($output));
+	foreach ($branches as $key => $branch) {
+		$branch = trim($branch);
+		if(strpos($branch, "*") > -1) {
+			$current = explode(' ', $branch, 2);
+			$branch = trim($current[1]);
+		}
+		$branches[$key] = $branch;
+		if ($branch === $branch_name) {
+			return true;
+		}
+	}
+	return false;
+}
+function tag_exists($git_repo, $tag_name) {
+	$cmd = "cd $git_repo; git tag;";
+	$output = `$cmd`;
+	$tags = explode("\n", trim($output));
+	foreach ($tags as $key => $tag) {
+		$tag = trim($tag);
+		$tags[$key] = $tag;
+		if ($tag === $tag_name) {
+			return true;
+		}
+	}
+	return false;
+}
+
+if ($argc > 1) {
+	if ($argc > 2) {
+		$branch = $argv[1];
+		$project = $argv[2];
+	} else {
+		$project = $argv[1];
+		$branch = 'master';
+	}
+	$website_dir = "/home/devsites/$project";
+	$git_repo = "/var/home/webdev/git-repos/$project.git";
+	if (!is_dir($website_dir)) {
+		fwrite(STDOUT, "error: $website_dir doesn't exist or is not a directory\n");
+		fwrite(STDOUT, $help);
+		exit(-1);
+	}
+	if (!is_dir($git_repo)) {
+		fwrite(STDOUT, "error: Git repo $git_repo not found\n");
+		exit(-1);
+	}
+	if (!branch_exists($git_repo, $branch) and !tag_exists($git_repo, $branch)) {
+		fwrite(STDOUT,	"error: the branch or tag your trying to use does not " .
+						"exist in the server repository\n");
+		exit(-1);
+	}
+	if (!array_key_exists($project, $production_dirs)) {
+		fwrite(STDOUT, "error: wrong configuration. Production dir not found\n");
+		exit(-1);
+	}
+	$production_dir = $production_dirs[$project];
+	//$production_dir = 'xtreme';
+	$current_branch = get_current_branch($git_repo);
+	if($current_branch != $branch) {
+		$switch = "sw-git-branch $project $branch";
+		$output = `$switch`;
+		fwrite(STDOUT, "switching to branch/tag $branch\n");
+		fwrite(STDOUT, $output);
+	}
+	fwrite(STDOUT,  "Starting deployment to production server...\n");
+	fwrite(STDOUT,  "file syncing started...\n");
+	$rsync = "rsync -arvuz " . 
+			 "--exclude-from=/var/home/webdev/git-repos/rsync_exclude.txt" .
+			 " /home/devsites/$project/" .
+			 " coho1:/home/agustin/websites/$production_dir";
+	$output = `$rsync`;
+	fwrite(STDOUT, $output);
+    
+} else {
+	fwrite(STDOUT, $help);
+}
+
+?>
+
