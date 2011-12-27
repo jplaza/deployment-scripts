@@ -64,8 +64,12 @@ if ($argc > 1) {
 		$project = $argv[1];
 		$branch = 'master';
 	}
+	$log = "/tmp/deployment-$project.log";
 	$website_dir = "/home/devsites/$project";
 	$git_repo = "/var/home/webdev/git-repos/$project.git";
+	$source = "/home/devsites/$project/";
+	$destination = "coho1:/home/agustin/websites/$production_dir";
+
 	if (!is_dir($website_dir)) {
 		fwrite(STDOUT, "error: $website_dir doesn't exist or is not a directory\n");
 		fwrite(STDOUT, $help);
@@ -77,13 +81,16 @@ if ($argc > 1) {
 	}
 	if (!branch_exists($git_repo, $branch) and !tag_exists($git_repo, $branch)) {
 		fwrite(STDOUT,	"error: the branch or tag your trying to use does not " .
-						"exist in the server repository\n");
+						"exist in the servers repository\n");
 		exit(-1);
 	}
 	if (!array_key_exists($project, $production_dirs)) {
 		fwrite(STDOUT, "error: wrong configuration. Production dir not found\n");
 		exit(-1);
 	}
+	$log_file = fopen($log, "a+");
+	fwrite($log_file, '[' . date("F j, Y, g:i a") . "]\n");
+
 	$production_dir = $production_dirs[$project];
 	//$production_dir = 'xtreme';
 	$current_branch = get_current_branch($git_repo);
@@ -92,16 +99,18 @@ if ($argc > 1) {
 		$output = `$switch`;
 		fwrite(STDOUT, "switching to branch/tag $branch\n");
 		fwrite(STDOUT, $output);
+		fwrite($log_file, $output);
 	}
 	fwrite(STDOUT,  "Starting deployment to production server...\n");
 	fwrite(STDOUT,  "file syncing started...\n");
 	$rsync = "rsync -arvuz " . 
 			 "--exclude-from=/var/home/webdev/git-repos/rsync_exclude.txt" .
-			 " /home/devsites/$project/" .
-			 " coho1:/home/agustin/websites/$production_dir";
+			 " $source" .
+			 " $destination";
 	$output = `$rsync`;
 	fwrite(STDOUT, $output);
-    
+	fwrite($log_file, $output);
+	fclose($log_file);
 } else {
 	fwrite(STDOUT, $help);
 }
